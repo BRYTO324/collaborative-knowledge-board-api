@@ -1,25 +1,54 @@
-# Collaborative Knowledge Board API Documentation
+# Collaborative Knowledge Board — API Documentation
 
-## Base URL
-```
-http://localhost:3000/api
-```
+**Version:** 2.0.0 | **Base URL:** `http://localhost:3000/api` | **Protocol:** REST + WebSocket
+
+---
+
+## Table of Contents
+
+1. [Authentication](#authentication)
+2. [Response Format](#response-format)
+3. [Boards](#boards)
+4. [Columns](#columns)
+5. [Cards](#cards)
+6. [Tags](#tags)
+7. [Comments](#comments)
+8. [Real-Time WebSocket](#real-time-websocket)
+9. [Error Reference](#error-reference)
+10. [Rate Limiting](#rate-limiting)
+
+---
 
 ## Authentication
-All endpoints except `/auth/register` and `/auth/login` require JWT authentication.
 
-Include the token in the Authorization header:
+All endpoints except `POST /auth/register` and `POST /auth/login` require a valid JWT token.
+
 ```
 Authorization: Bearer <your_jwt_token>
 ```
 
+Tokens are issued on login and expire after 7 days.
+
 ---
 
-## Endpoints
+## Response Format
 
-### Authentication
+Every response — success or error — follows this envelope:
 
-#### Register User
+```json
+{
+  "success": true,
+  "message": "Human-readable description",
+  "data": {}
+}
+```
+
+---
+
+## Authentication
+
+### Register
+
 ```http
 POST /api/auth/register
 ```
@@ -33,23 +62,26 @@ POST /api/auth/register
 }
 ```
 
-**Response (201):**
+**Response `201`:**
 ```json
 {
   "success": true,
   "message": "User registered successfully",
   "data": {
     "user": {
-      "id": "uuid",
+      "id": "a1b2c3d4-...",
       "email": "user@example.com",
       "name": "John Doe"
     },
-    "token": "jwt_token_here"
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
   }
 }
 ```
 
-#### Login
+---
+
+### Login
+
 ```http
 POST /api/auth/login
 ```
@@ -62,27 +94,28 @@ POST /api/auth/login
 }
 ```
 
-**Response (200):**
+**Response `200`:**
 ```json
 {
   "success": true,
   "message": "Login successful",
   "data": {
     "user": {
-      "id": "uuid",
+      "id": "a1b2c3d4-...",
       "email": "user@example.com",
       "name": "John Doe"
     },
-    "token": "jwt_token_here"
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
   }
 }
 ```
 
 ---
 
-### Boards
+## Boards
 
-#### Create Board
+### Create Board
+
 ```http
 POST /api/boards
 Authorization: Bearer <token>
@@ -96,35 +129,39 @@ Authorization: Bearer <token>
 }
 ```
 
-**Response (201):**
+**Response `201`:**
 ```json
 {
   "success": true,
   "message": "Board created successfully",
   "data": {
-    "id": "uuid",
+    "id": "b1c2d3e4-...",
     "title": "My Project Board",
     "description": "Project management board",
-    "userId": "uuid",
-    "createdAt": "2026-03-03T10:00:00.000Z",
-    "updatedAt": "2026-03-03T10:00:00.000Z"
+    "userId": "a1b2c3d4-...",
+    "createdAt": "2026-03-16T10:00:00.000Z",
+    "updatedAt": "2026-03-16T10:00:00.000Z"
   }
 }
 ```
 
-#### Get All User Boards
+---
+
+### Get All Boards (Paginated)
+
 ```http
 GET /api/boards?page=1&limit=20
 Authorization: Bearer <token>
 ```
 
 **Query Parameters:**
+
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | page | number | 1 | Page number |
-| limit | number | 20 | Items per page |
+| limit | number | 20 | Items per page (max 100) |
 
-**Response (200):**
+**Response `200`:**
 ```json
 {
   "success": true,
@@ -132,13 +169,15 @@ Authorization: Bearer <token>
   "data": {
     "boards": [
       {
-        "id": "uuid",
+        "id": "b1c2d3e4-...",
         "title": "My Project Board",
         "description": "Project management board",
-        "userId": "uuid",
-        "columns": [],
-        "createdAt": "2026-03-03T10:00:00.000Z",
-        "updatedAt": "2026-03-03T10:00:00.000Z"
+        "userId": "a1b2c3d4-...",
+        "columns": [
+          { "id": "c1d2e3f4-...", "title": "To Do", "position": 0, "boardId": "b1c2d3e4-..." }
+        ],
+        "createdAt": "2026-03-16T10:00:00.000Z",
+        "updatedAt": "2026-03-16T10:00:00.000Z"
       }
     ],
     "pagination": {
@@ -151,43 +190,45 @@ Authorization: Bearer <token>
 }
 ```
 
-#### Get Board by ID
+---
+
+### Get Board by ID
+
 ```http
 GET /api/boards/:id
 Authorization: Bearer <token>
 ```
 
-**Response (200):**
+**Response `200`:**
 ```json
 {
   "success": true,
   "message": "Board retrieved successfully",
   "data": {
-    "id": "uuid",
+    "id": "b1c2d3e4-...",
     "title": "My Project Board",
     "description": "Project management board",
-    "userId": "uuid",
+    "userId": "a1b2c3d4-...",
     "columns": [
-      {
-        "id": "uuid",
-        "title": "To Do",
-        "position": 0,
-        "boardId": "uuid"
-      }
+      { "id": "c1d2e3f4-...", "title": "To Do", "position": 0, "boardId": "b1c2d3e4-..." },
+      { "id": "c2d3e4f5-...", "title": "In Progress", "position": 1, "boardId": "b1c2d3e4-..." }
     ],
-    "createdAt": "2026-03-03T10:00:00.000Z",
-    "updatedAt": "2026-03-03T10:00:00.000Z"
+    "createdAt": "2026-03-16T10:00:00.000Z",
+    "updatedAt": "2026-03-16T10:00:00.000Z"
   }
 }
 ```
 
-#### Update Board
+---
+
+### Update Board
+
 ```http
 PATCH /api/boards/:id
 Authorization: Bearer <token>
 ```
 
-**Request Body:**
+**Request Body** (all fields optional):
 ```json
 {
   "title": "Updated Board Title",
@@ -195,13 +236,34 @@ Authorization: Bearer <token>
 }
 ```
 
-#### Delete Board
+**Response `200`:**
+```json
+{
+  "success": true,
+  "message": "Board updated successfully",
+  "data": {
+    "id": "b1c2d3e4-...",
+    "title": "Updated Board Title",
+    "description": "Updated description",
+    "userId": "a1b2c3d4-...",
+    "createdAt": "2026-03-16T10:00:00.000Z",
+    "updatedAt": "2026-03-16T11:00:00.000Z"
+  }
+}
+```
+
+---
+
+### Delete Board
+
 ```http
 DELETE /api/boards/:id
 Authorization: Bearer <token>
 ```
 
-**Response (200):**
+Cascades — deletes all columns, cards, and comments belonging to this board.
+
+**Response `200`:**
 ```json
 {
   "success": true,
@@ -212,9 +274,10 @@ Authorization: Bearer <token>
 
 ---
 
-### Columns
+## Columns
 
-#### Create Column
+### Create Column
+
 ```http
 POST /api/columns
 Authorization: Bearer <token>
@@ -224,34 +287,59 @@ Authorization: Bearer <token>
 ```json
 {
   "title": "To Do",
-  "boardId": "board_uuid",
+  "boardId": "b1c2d3e4-...",
   "position": 0
 }
 ```
 
-**Response (201):**
+**Response `201`:**
 ```json
 {
   "success": true,
   "message": "Column created successfully",
   "data": {
-    "id": "uuid",
+    "id": "c1d2e3f4-...",
     "title": "To Do",
     "position": 0,
-    "boardId": "board_uuid",
-    "createdAt": "2026-03-03T10:00:00.000Z",
-    "updatedAt": "2026-03-03T10:00:00.000Z"
+    "boardId": "b1c2d3e4-...",
+    "createdAt": "2026-03-16T10:00:00.000Z",
+    "updatedAt": "2026-03-16T10:00:00.000Z"
   }
 }
 ```
 
-#### Update Column
+---
+
+### Get Columns by Board
+
+```http
+GET /api/columns/board/:boardId
+Authorization: Bearer <token>
+```
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "message": "Columns retrieved successfully",
+  "data": [
+    { "id": "c1d2e3f4-...", "title": "To Do", "position": 0, "boardId": "b1c2d3e4-..." },
+    { "id": "c2d3e4f5-...", "title": "In Progress", "position": 1, "boardId": "b1c2d3e4-..." },
+    { "id": "c3d4e5f6-...", "title": "Done", "position": 2, "boardId": "b1c2d3e4-..." }
+  ]
+}
+```
+
+---
+
+### Update Column
+
 ```http
 PATCH /api/columns/:id
 Authorization: Bearer <token>
 ```
 
-**Request Body:**
+**Request Body** (all fields optional):
 ```json
 {
   "title": "In Progress",
@@ -259,17 +347,48 @@ Authorization: Bearer <token>
 }
 ```
 
-#### Delete Column
+**Response `200`:**
+```json
+{
+  "success": true,
+  "message": "Column updated successfully",
+  "data": {
+    "id": "c1d2e3f4-...",
+    "title": "In Progress",
+    "position": 1,
+    "boardId": "b1c2d3e4-...",
+    "createdAt": "2026-03-16T10:00:00.000Z",
+    "updatedAt": "2026-03-16T11:00:00.000Z"
+  }
+}
+```
+
+---
+
+### Delete Column
+
 ```http
 DELETE /api/columns/:id
 Authorization: Bearer <token>
 ```
 
+Cascades — deletes all cards and comments in this column.
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "message": "Column deleted successfully",
+  "data": null
+}
+```
+
 ---
 
-### Cards
+## Cards
 
-#### Create Card
+### Create Card
+
 ```http
 POST /api/cards
 Authorization: Bearer <token>
@@ -280,44 +399,52 @@ Authorization: Bearer <token>
 {
   "title": "Implement authentication",
   "description": "Add JWT-based authentication",
-  "columnId": "column_uuid",
-  "position": 0,
-  "dueDate": "2026-03-10T00:00:00.000Z"
+  "columnId": "c1d2e3f4-...",
+  "dueDate": "2026-03-20T00:00:00.000Z"
 }
 ```
 
-**Response (201):**
+> `position` is optional. If omitted, the card is appended to the end of the column.
+
+**Response `201`:**
 ```json
 {
   "success": true,
   "message": "Card created successfully",
   "data": {
-    "id": "uuid",
+    "id": "d1e2f3g4-...",
     "title": "Implement authentication",
     "description": "Add JWT-based authentication",
-    "dueDate": "2026-03-10T00:00:00.000Z",
+    "dueDate": "2026-03-20T00:00:00.000Z",
     "position": 0,
     "version": 1,
-    "columnId": "column_uuid",
-    "createdAt": "2026-03-03T10:00:00.000Z",
-    "updatedAt": "2026-03-03T10:00:00.000Z"
+    "columnId": "c1d2e3f4-...",
+    "tags": [],
+    "createdAt": "2026-03-16T10:00:00.000Z",
+    "updatedAt": "2026-03-16T10:00:00.000Z"
   }
 }
 ```
 
-#### Get Cards by Column
+> **WebSocket:** Emits `card:created` to all clients in the board room.
+
+---
+
+### Get Cards by Column (Paginated)
+
 ```http
 GET /api/cards/column/:columnId?page=1&limit=50
 Authorization: Bearer <token>
 ```
 
 **Query Parameters:**
+
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | page | number | 1 | Page number |
-| limit | number | 50 | Items per page |
+| limit | number | 50 | Items per page (max 100) |
 
-**Response (200):**
+**Response `200`:**
 ```json
 {
   "success": true,
@@ -325,45 +452,70 @@ Authorization: Bearer <token>
   "data": {
     "cards": [
       {
-        "id": "uuid",
+        "id": "d1e2f3g4-...",
         "title": "Implement authentication",
+        "description": "Add JWT-based authentication",
+        "dueDate": "2026-03-20T00:00:00.000Z",
         "position": 0,
         "version": 1,
-        "columnId": "column_uuid",
-        "tags": [],
-        "createdAt": "2026-03-03T10:00:00.000Z",
-        "updatedAt": "2026-03-03T10:00:00.000Z"
+        "columnId": "c1d2e3f4-...",
+        "tags": [
+          { "tag": { "id": "t1u2v3w4-...", "name": "urgent", "color": "#FF0000" } }
+        ],
+        "createdAt": "2026-03-16T10:00:00.000Z",
+        "updatedAt": "2026-03-16T10:00:00.000Z"
       }
     ],
     "pagination": {
       "page": 1,
       "limit": 50,
-      "total": 10,
+      "total": 12,
       "totalPages": 1
     }
   }
 }
 ```
 
-#### Update Card
+---
+
+### Update Card
+
 ```http
 PATCH /api/cards/:id
 Authorization: Bearer <token>
 ```
 
-**Request Body:**
+**Request Body** (all fields optional):
 ```json
 {
   "title": "Updated title",
   "description": "Updated description",
-  "dueDate": "2026-03-15T00:00:00.000Z",
+  "dueDate": "2026-03-25T00:00:00.000Z",
   "version": 1
 }
 ```
 
-> **Optimistic Locking:** If you include `version` in the request body, the API will check it against the current card version. If they don't match (another user updated the card), a `409 Conflict` is returned. Omit `version` to skip the conflict check.
+**Optimistic Locking:** Including `version` enables conflict detection. If the card has been modified by another user since you last fetched it, the server returns `409 Conflict`. Omit `version` to skip the check.
 
-**Conflict Response (409):**
+**Response `200`:**
+```json
+{
+  "success": true,
+  "message": "Card updated successfully",
+  "data": {
+    "id": "d1e2f3g4-...",
+    "title": "Updated title",
+    "description": "Updated description",
+    "position": 0,
+    "version": 2,
+    "columnId": "c1d2e3f4-...",
+    "createdAt": "2026-03-16T10:00:00.000Z",
+    "updatedAt": "2026-03-16T11:00:00.000Z"
+  }
+}
+```
+
+**Conflict Response `409`:**
 ```json
 {
   "success": false,
@@ -371,68 +523,117 @@ Authorization: Bearer <token>
 }
 ```
 
-#### Move Card
+> **WebSocket:** Emits `card:updated` to all clients in the board room.
+
+---
+
+### Move Card
+
 ```http
 POST /api/cards/:id/move
 Authorization: Bearer <token>
 ```
 
-Moves a card to a target column and position. Works for both within-column reordering and cross-column moves. All affected card positions are updated atomically in a single transaction — no duplicate positions will result.
+Moves a card to a target column and position. Handles both within-column reordering and cross-column moves. All position adjustments are executed in a single atomic database transaction — no duplicate positions, no data corruption.
 
 **Request Body:**
 ```json
 {
-  "targetColumnId": "column_uuid",
+  "targetColumnId": "c2d3e4f5-...",
   "targetPosition": 2
 }
 ```
 
-**Response (200):**
+> Set `targetColumnId` to the card's current column to reorder within the same column.
+
+**Response `200`:**
 ```json
 {
   "success": true,
   "message": "Card moved successfully",
   "data": {
-    "id": "uuid",
+    "id": "d1e2f3g4-...",
     "title": "Implement authentication",
     "position": 2,
-    "columnId": "column_uuid",
     "version": 2,
-    "createdAt": "2026-03-03T10:00:00.000Z",
-    "updatedAt": "2026-03-03T10:00:00.000Z"
+    "columnId": "c2d3e4f5-...",
+    "createdAt": "2026-03-16T10:00:00.000Z",
+    "updatedAt": "2026-03-16T11:30:00.000Z"
   }
 }
 ```
 
 **Ordering Strategy:**
-- Within-column move: cards between the old and new position are shifted by ±1 to make room.
-- Cross-column move: cards above the removed position in the source column shift up; cards at or below the target position in the destination column shift down.
-- All operations run inside a Prisma transaction to prevent race conditions and duplicate positions.
+- Within-column: cards between the old and new position shift by ±1 to close/open the gap.
+- Cross-column: source column gap is closed, target column space is opened, card is moved — three steps in one transaction.
 
-#### Delete Card
+> **WebSocket:** Emits `card:moved` to all clients in the board room.
+
+---
+
+### Delete Card
+
 ```http
 DELETE /api/cards/:id
 Authorization: Bearer <token>
 ```
 
-#### Assign Tags to Card
+Cascades — deletes all comments on this card.
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "message": "Card deleted successfully",
+  "data": null
+}
+```
+
+> **WebSocket:** Emits `card:deleted` to all clients in the board room.
+
+---
+
+### Assign Tags to Card
+
 ```http
 POST /api/cards/:id/tags
 Authorization: Bearer <token>
 ```
 
+Replaces the card's current tag assignments with the provided list. Send an empty array to remove all tags.
+
 **Request Body:**
 ```json
 {
-  "tagIds": ["tag_uuid_1", "tag_uuid_2"]
+  "tagIds": ["t1u2v3w4-...", "t2u3v4w5-..."]
+}
+```
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "message": "Tags assigned successfully",
+  "data": {
+    "id": "d1e2f3g4-...",
+    "title": "Implement authentication",
+    "position": 0,
+    "version": 1,
+    "columnId": "c1d2e3f4-...",
+    "tags": [
+      { "tag": { "id": "t1u2v3w4-...", "name": "urgent", "color": "#FF0000" } },
+      { "tag": { "id": "t2u3v4w5-...", "name": "backend", "color": "#3B82F6" } }
+    ]
+  }
 }
 ```
 
 ---
 
-### Tags
+## Tags
 
-#### Create Tag
+### Create Tag
+
 ```http
 POST /api/tags
 Authorization: Bearer <token>
@@ -446,129 +647,149 @@ Authorization: Bearer <token>
 }
 ```
 
-**Response (201):**
+> `color` is optional. Defaults to `#3B82F6` if omitted.
+
+**Response `201`:**
 ```json
 {
   "success": true,
   "message": "Tag created successfully",
   "data": {
-    "id": "uuid",
+    "id": "t1u2v3w4-...",
     "name": "urgent",
     "color": "#FF0000",
-    "createdAt": "2026-03-03T10:00:00.000Z"
+    "createdAt": "2026-03-16T10:00:00.000Z"
   }
 }
 ```
 
-#### Get All Tags
+---
+
+### Get All Tags
+
 ```http
 GET /api/tags
 Authorization: Bearer <token>
 ```
 
+**Response `200`:**
+```json
+{
+  "success": true,
+  "message": "Tags retrieved successfully",
+  "data": [
+    { "id": "t1u2v3w4-...", "name": "urgent", "color": "#FF0000", "createdAt": "2026-03-16T10:00:00.000Z" },
+    { "id": "t2u3v4w5-...", "name": "backend", "color": "#3B82F6", "createdAt": "2026-03-16T10:00:00.000Z" }
+  ]
+}
+```
+
 ---
 
-### Comments
+## Comments
 
-Comments support two levels of threading: top-level comments and one level of replies. Replies to replies are rejected.
+Comments support two levels of threading. Top-level comments have `parentId: null`. Replies reference a parent comment via `parentId`. Replying to a reply is rejected with `403`.
 
-#### Create Comment
+### Create Comment
+
 ```http
 POST /api/comments
 Authorization: Bearer <token>
 ```
 
-**Request Body:**
+**Top-level comment:**
 ```json
 {
-  "cardId": "card_uuid",
-  "content": "This looks good!"
+  "cardId": "d1e2f3g4-...",
+  "content": "This looks great!"
 }
 ```
 
-To create a threaded reply, include `parentId`:
+**Threaded reply:**
 ```json
 {
-  "cardId": "card_uuid",
-  "content": "Agreed, nice work!",
-  "parentId": "parent_comment_uuid"
+  "cardId": "d1e2f3g4-...",
+  "content": "Agreed, well done!",
+  "parentId": "e1f2g3h4-..."
 }
 ```
 
-**Response (201):**
+**Response `201`:**
 ```json
 {
   "success": true,
   "message": "Comment created successfully",
   "data": {
-    "id": "uuid",
-    "content": "This looks good!",
-    "cardId": "card_uuid",
-    "userId": "user_uuid",
+    "id": "e1f2g3h4-...",
+    "content": "This looks great!",
+    "cardId": "d1e2f3g4-...",
+    "userId": "a1b2c3d4-...",
     "parentId": null,
     "user": {
-      "id": "user_uuid",
+      "id": "a1b2c3d4-...",
       "name": "John Doe",
       "email": "user@example.com"
     },
-    "createdAt": "2026-03-03T10:00:00.000Z",
-    "updatedAt": "2026-03-03T10:00:00.000Z"
+    "createdAt": "2026-03-16T10:00:00.000Z",
+    "updatedAt": "2026-03-16T10:00:00.000Z"
   }
 }
 ```
 
-**Nesting Rules:**
-- `parentId: null` — top-level comment
-- `parentId: <uuid>` — reply to a top-level comment
-- Replying to a reply returns `403 Forbidden` (max 2 levels enforced)
+**Nesting rules:**
+- `parentId` omitted or `null` → top-level comment
+- `parentId: <uuid>` → reply to a top-level comment
+- `parentId` pointing to a reply → `403 Forbidden` (max 2 levels)
 
-#### Get Comments by Card
+> **WebSocket:** Emits `comment:created` to all clients in the board room.
+
+---
+
+### Get Comments by Card
+
 ```http
 GET /api/comments/card/:cardId
 Authorization: Bearer <token>
 ```
 
-Returns only top-level comments. Each comment includes its `replies` array.
+Returns only top-level comments. Each includes a `replies` array with all direct replies.
 
-**Response (200):**
+**Response `200`:**
 ```json
 {
   "success": true,
   "message": "Comments retrieved successfully",
   "data": [
     {
-      "id": "uuid",
-      "content": "This looks good!",
-      "cardId": "card_uuid",
-      "userId": "user_uuid",
+      "id": "e1f2g3h4-...",
+      "content": "This looks great!",
+      "cardId": "d1e2f3g4-...",
+      "userId": "a1b2c3d4-...",
       "parentId": null,
-      "user": {
-        "id": "user_uuid",
-        "name": "John Doe",
-        "email": "user@example.com"
-      },
+      "user": { "id": "a1b2c3d4-...", "name": "John Doe", "email": "user@example.com" },
       "replies": [
         {
-          "id": "uuid",
-          "content": "Agreed!",
-          "parentId": "parent_uuid",
-          "user": {
-            "id": "user_uuid",
-            "name": "Jane Doe",
-            "email": "jane@example.com"
-          },
-          "createdAt": "2026-03-03T10:01:00.000Z",
-          "updatedAt": "2026-03-03T10:01:00.000Z"
+          "id": "f1g2h3i4-...",
+          "content": "Agreed, well done!",
+          "cardId": "d1e2f3g4-...",
+          "userId": "b2c3d4e5-...",
+          "parentId": "e1f2g3h4-...",
+          "user": { "id": "b2c3d4e5-...", "name": "Jane Doe", "email": "jane@example.com" },
+          "createdAt": "2026-03-16T10:01:00.000Z",
+          "updatedAt": "2026-03-16T10:01:00.000Z"
         }
       ],
-      "createdAt": "2026-03-03T10:00:00.000Z",
-      "updatedAt": "2026-03-03T10:00:00.000Z"
+      "createdAt": "2026-03-16T10:00:00.000Z",
+      "updatedAt": "2026-03-16T10:00:00.000Z"
     }
   ]
 }
 ```
 
-#### Update Comment
+---
+
+### Update Comment
+
 ```http
 PATCH /api/comments/:id
 Authorization: Bearer <token>
@@ -583,37 +804,38 @@ Only the comment owner can edit. Returns `403` if another user attempts it.
 }
 ```
 
-**Response (200):**
+**Response `200`:**
 ```json
 {
   "success": true,
   "message": "Comment updated successfully",
   "data": {
-    "id": "uuid",
+    "id": "e1f2g3h4-...",
     "content": "Updated comment text",
-    "cardId": "card_uuid",
-    "userId": "user_uuid",
+    "cardId": "d1e2f3g4-...",
+    "userId": "a1b2c3d4-...",
     "parentId": null,
-    "user": {
-      "id": "user_uuid",
-      "name": "John Doe",
-      "email": "user@example.com"
-    },
-    "createdAt": "2026-03-03T10:00:00.000Z",
-    "updatedAt": "2026-03-03T10:05:00.000Z"
+    "user": { "id": "a1b2c3d4-...", "name": "John Doe", "email": "user@example.com" },
+    "createdAt": "2026-03-16T10:00:00.000Z",
+    "updatedAt": "2026-03-16T11:00:00.000Z"
   }
 }
 ```
 
-#### Delete Comment
+> **WebSocket:** Emits `comment:updated` to all clients in the board room.
+
+---
+
+### Delete Comment
+
 ```http
 DELETE /api/comments/:id
 Authorization: Bearer <token>
 ```
 
-Only the comment owner can delete. Deleting a parent comment cascades and removes all its replies.
+Only the comment owner can delete. Deleting a parent comment cascades and removes all its replies at the database level.
 
-**Response (200):**
+**Response `200`:**
 ```json
 {
   "success": true,
@@ -622,53 +844,83 @@ Only the comment owner can delete. Deleting a parent comment cascades and remove
 }
 ```
 
+> **WebSocket:** Emits `comment:deleted` to all clients in the board room.
+
 ---
 
-## Real-Time Events (WebSocket)
+## Real-Time WebSocket
 
-The API uses Socket.io for real-time updates. Connect to the WebSocket server at the same base URL.
+The API uses Socket.io. Connect to the same server URL — no separate port needed.
 
-### Connection
+### Connect
 
-```js
+```javascript
 import { io } from 'socket.io-client';
 
 const socket = io('http://localhost:3000', {
   auth: { token: 'your_jwt_token' }
 });
+
+socket.on('connect', () => console.log('Connected:', socket.id));
+socket.on('connect_error', (err) => console.error('Auth failed:', err.message));
 ```
 
-### Joining a Board Room
+Unauthenticated connections are rejected at the handshake level.
 
-After connecting, join a board room to receive events for that board:
+### Board Rooms
 
-```js
-socket.emit('join:board', 'board_uuid');
+Join a board room to receive all events scoped to that board:
 
-// Leave when done
-socket.emit('leave:board', 'board_uuid');
+```javascript
+socket.emit('join:board', 'board-uuid');
+
+// Leave when navigating away
+socket.emit('leave:board', 'board-uuid');
 ```
 
-### Events
+### Events Reference
 
-All events are scoped to the board room. You only receive events for boards you have joined.
+| Event | Trigger | Payload |
+|-------|---------|---------|
+| `card:created` | Card created | `{ card, boardId, columnId }` |
+| `card:updated` | Card updated | `{ card, boardId, columnId }` |
+| `card:moved` | Card moved | `{ card, boardId, sourceColumnId, targetColumnId, targetPosition }` |
+| `card:deleted` | Card deleted | `{ cardId, boardId, columnId }` |
+| `comment:created` | Comment or reply created | `{ comment, boardId, cardId }` |
+| `comment:updated` | Comment edited | `{ comment, boardId, cardId }` |
+| `comment:deleted` | Comment deleted | `{ commentId, boardId, cardId }` |
 
-| Event | Trigger |
-|-------|---------|
-| `card:created` | A card is created in the board |
-| `card:updated` | A card is updated |
-| `card:moved` | A card is moved to a new column or position |
-| `card:deleted` | A card is deleted |
-| `comment:created` | A comment is added to a card |
-| `comment:updated` | A comment is edited |
-| `comment:deleted` | A comment is deleted |
+### Listening to Events
 
-### Event Payloads
+```javascript
+socket.on('card:created', ({ card, boardId, columnId }) => {
+  console.log('New card added:', card.title);
+});
+
+socket.on('card:moved', ({ card, sourceColumnId, targetColumnId }) => {
+  console.log(`Card moved from ${sourceColumnId} to ${targetColumnId}`);
+});
+
+socket.on('comment:created', ({ comment, cardId }) => {
+  console.log('New comment on card', cardId, ':', comment.content);
+});
+```
+
+### Full Event Payloads
 
 **`card:created`**
 ```json
 {
-  "card": { "id": "uuid", "title": "New Card", "position": 0, "columnId": "uuid" },
+  "card": { "id": "uuid", "title": "New Card", "position": 0, "version": 1, "columnId": "uuid" },
+  "boardId": "uuid",
+  "columnId": "uuid"
+}
+```
+
+**`card:updated`**
+```json
+{
+  "card": { "id": "uuid", "title": "Updated Card", "position": 0, "version": 2, "columnId": "uuid" },
   "boardId": "uuid",
   "columnId": "uuid"
 }
@@ -677,11 +929,20 @@ All events are scoped to the board room. You only receive events for boards you 
 **`card:moved`**
 ```json
 {
-  "card": { "id": "uuid", "title": "Moved Card", "position": 2, "columnId": "uuid" },
+  "card": { "id": "uuid", "title": "Moved Card", "position": 2, "version": 3, "columnId": "target-column-uuid" },
   "boardId": "uuid",
-  "sourceColumnId": "uuid",
-  "targetColumnId": "uuid",
+  "sourceColumnId": "source-column-uuid",
+  "targetColumnId": "target-column-uuid",
   "targetPosition": 2
+}
+```
+
+**`card:deleted`**
+```json
+{
+  "cardId": "uuid",
+  "boardId": "uuid",
+  "columnId": "uuid"
 }
 ```
 
@@ -694,34 +955,90 @@ All events are scoped to the board room. You only receive events for boards you 
 }
 ```
 
+**`comment:updated`**
+```json
+{
+  "comment": { "id": "uuid", "content": "Updated text", "cardId": "uuid" },
+  "boardId": "uuid",
+  "cardId": "uuid"
+}
+```
+
+**`comment:deleted`**
+```json
+{
+  "commentId": "uuid",
+  "boardId": "uuid",
+  "cardId": "uuid"
+}
+```
+
 ---
 
-## Error Responses
+## Error Reference
 
-All errors follow this format:
+All error responses follow this format:
 
 ```json
 {
   "success": false,
-  "message": "Error description"
+  "message": "Human-readable error description"
 }
 ```
 
-### Common Status Codes
-| Code | Meaning |
-|------|---------|
-| 200 | Success |
-| 201 | Created |
-| 400 | Bad Request |
-| 401 | Unauthorized — missing or invalid token |
-| 403 | Forbidden — valid token but insufficient permissions |
-| 404 | Not Found |
-| 409 | Conflict — optimistic lock version mismatch |
-| 422 | Validation Error — invalid request body |
-| 500 | Internal Server Error |
+| Status Code | Meaning | Common Cause |
+|-------------|---------|--------------|
+| `400` | Bad Request | Malformed request body |
+| `401` | Unauthorized | Missing or expired JWT token |
+| `403` | Forbidden | Valid token but resource belongs to another user, or nesting limit exceeded |
+| `404` | Not Found | Resource does not exist |
+| `409` | Conflict | Optimistic lock version mismatch |
+| `422` | Validation Error | Zod schema validation failed (invalid field types, missing required fields) |
+| `500` | Internal Server Error | Unexpected server error |
 
 ---
 
 ## Rate Limiting
 
-100 requests per 15 minutes per IP address, applied to all `/api/*` endpoints.
+All `/api/*` endpoints are rate-limited to **100 requests per 15 minutes per IP address**.
+
+Exceeding the limit returns:
+
+```json
+{
+  "success": false,
+  "message": "Too many requests from this IP, please try again later"
+}
+```
+
+---
+
+## Endpoint Summary
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/auth/register` | No | Register new user |
+| POST | `/api/auth/login` | No | Login, receive JWT |
+| POST | `/api/boards` | Yes | Create board |
+| GET | `/api/boards` | Yes | List boards (paginated) |
+| GET | `/api/boards/:id` | Yes | Get board with columns |
+| PATCH | `/api/boards/:id` | Yes | Update board |
+| DELETE | `/api/boards/:id` | Yes | Delete board (cascades) |
+| POST | `/api/columns` | Yes | Create column |
+| GET | `/api/columns/board/:boardId` | Yes | List columns in board |
+| PATCH | `/api/columns/:id` | Yes | Update column |
+| DELETE | `/api/columns/:id` | Yes | Delete column (cascades) |
+| POST | `/api/cards` | Yes | Create card |
+| GET | `/api/cards/column/:columnId` | Yes | List cards (paginated) |
+| PATCH | `/api/cards/:id` | Yes | Update card (optimistic lock) |
+| POST | `/api/cards/:id/move` | Yes | Move card within/across columns |
+| DELETE | `/api/cards/:id` | Yes | Delete card |
+| POST | `/api/cards/:id/tags` | Yes | Assign tags to card |
+| POST | `/api/tags` | Yes | Create tag |
+| GET | `/api/tags` | Yes | List all tags |
+| POST | `/api/comments` | Yes | Create comment or reply |
+| GET | `/api/comments/card/:cardId` | Yes | List comments with replies |
+| PATCH | `/api/comments/:id` | Yes | Edit own comment |
+| DELETE | `/api/comments/:id` | Yes | Delete own comment (cascades replies) |
+
+**Total: 23 HTTP endpoints + WebSocket**
