@@ -58,6 +58,7 @@ model Card {
   description String?
   dueDate     DateTime?
   position    Int
+  version     Int       @default(1)
   columnId    String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -67,6 +68,7 @@ model Card {
   comments Comment[]
 
   @@index([columnId])
+  @@index([columnId, position])
   @@map("cards")
 }
 
@@ -98,13 +100,17 @@ model Comment {
   content   String
   cardId    String
   userId    String
+  parentId  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: SetNull)
+  card     Card       @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   Comment?   @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[]  @relation("CommentReplies")
 
   @@index([cardId])
   @@index([userId])
+  @@index([parentId])
   @@map("comments")
 }

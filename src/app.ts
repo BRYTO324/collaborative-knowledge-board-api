@@ -13,7 +13,6 @@ import tagRoutes from './modules/tag/tag.routes';
 
 import { errorHandler } from './middleware/error.middleware';
 import { notFoundHandler } from './middleware/notFound.middleware';
-import { logger } from './utils/logger';
 
 const app: Application = express();
 
@@ -41,7 +40,7 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 

@@ -1,12 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
-import { AppError, ValidationError } from '../utils/errors';
+import { AppError } from '../utils/errors';
 import { sendError } from '../utils/response';
 import { logger } from '../utils/logger';
 
 export const errorHandler = (
   err: Error,
-  req: Request,
+  _req: Request,
   res: Response,
   _next: NextFunction
 ): void => {

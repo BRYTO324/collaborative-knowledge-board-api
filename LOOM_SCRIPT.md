@@ -1,110 +1,164 @@
-# Loom Walkthrough Script (3 Minutes)
-
-## Introduction (15 seconds)
-
-"Hi! I'm going to walk you through the Collaborative Knowledge Board API I built. This is a production-ready backend system demonstrating clean architecture, proper database design, and professional engineering practices. Let's dive in."
+# Stage 2 Loom Walkthrough Script (~3 Minutes)
 
 ---
 
-## Architecture Overview (45 seconds)
+## INTRO — 0:00 to 0:15
 
-"First, the architecture. I chose a **4-layer architecture pattern**:
-
-1. **Routes** - Define HTTP endpoints
-2. **Controllers** - Handle requests and responses, stay thin
-3. **Services** - Contain all business logic
-4. **Repositories** - Handle database operations
-
-**Why this matters**: Each layer has a single responsibility. Controllers don't know about databases. Services don't know about HTTP. This makes the code testable, maintainable, and scalable.
-
-The request flow is: Route → Auth Middleware → Controller validates with Zod → Service executes business logic → Repository queries the database → Response sent back in a standardized format."
+"Hey, I'm walking you through Stage 2 of my Collaborative Knowledge Board API.
+Stage 1 gave us the core foundation — auth, boards, columns, cards, tags, clean layered architecture.
+Stage 2 is where the system becomes truly collaborative. I added real-time WebSocket events,
+threaded comments, atomic card reordering, optimistic locking for conflict detection, and a full
+test suite. Let me show you exactly how each piece works."
 
 ---
 
-## Database Design (45 seconds)
+## 1. ARCHITECTURE OVERVIEW — 0:15 to 0:40
 
-"Let's talk database. I designed a relational schema with 6 entities:
+> Show: `src/` folder structure in the file tree
 
-- **User** - Authentication
-- **Board** - Top-level workspace
-- **Column** - Sections within a board
-- **Card** - Tasks within columns
-- **Tag** - Labels for cards (many-to-many)
-- **Comment** - Discussions on cards
+"The architecture didn't change in Stage 2 — and that's intentional. The 4-layer pattern held up
+perfectly: Routes, Controllers, Services, Repositories. Every new feature slotted in cleanly
+without touching existing layers.
 
-**Key relationships**:
-- User owns Boards (1:N with cascade delete)
-- Board contains Columns (1:N with cascade delete)
-- Column contains Cards (1:N with cascade delete)
-- Cards and Tags are many-to-many via a junction table
-- Cards have Comments (1:N)
-
-I added indexes on foreign keys and frequently queried fields for performance. Position fields allow drag-and-drop reordering."
+What Stage 2 added on top is a dedicated WebSocket service that sits alongside the HTTP layer.
+The two are completely decoupled — HTTP handles requests and responses, WebSocket handles
+broadcasting. Services are the bridge: after every successful database write, the service emits
+a real-time event. That's the entire integration point."
 
 ---
 
-## Code Organization (30 seconds)
+## 2. REAL-TIME WEBSOCKET — 0:40 to 1:10
 
-"The folder structure is module-based. Each domain—auth, board, card, comment, tag—is self-contained with its own controller, service, repository, validator, and routes.
+> Show: `src/services/websocket.service.ts`
 
-**Why?** When you need to work on boards, everything is in one folder. No hunting across the codebase. This scales beautifully as the project grows.
+"The WebSocket service uses Socket.io. When the HTTP server starts, it initializes Socket.io on
+the same port — no separate server needed.
 
-Shared utilities like error classes, logging, and response formatters are centralized to avoid duplication."
+Authentication is handled at the handshake level. The client passes its JWT token, we verify it
+the same way we verify HTTP requests, and attach the userId to the socket. Unauthenticated
+connections are rejected before they even connect.
 
----
+Clients join board rooms by emitting a `join:board` event with a board ID. From that point, any
+mutation on that board — card created, card moved, comment added — gets broadcast to everyone
+in that room instantly.
 
-## Key Engineering Decisions (45 seconds)
+The key design decision here: the WebSocket service has zero business logic. It only broadcasts.
+All logic stays in the service layer. This keeps the real-time layer clean and testable."
 
-"Let me highlight some critical decisions:
+> Show: `WS_EVENTS` constant and `emitToBoardMembers` call in `card.service.ts`
 
-**1. TypeScript Strict Mode** - Catches errors at compile time, not runtime.
-
-**2. Zod Validation** - Every input is validated with type-safe schemas. No bad data reaches the database.
-
-**3. JWT Authentication** - Stateless, scalable, works great with microservices.
-
-**4. Repository Pattern** - Database logic is isolated. Easy to test, easy to swap implementations.
-
-**5. Custom Error Classes** - Type-safe errors like `NotFoundError`, `UnauthorizedError`. The global error handler converts these to proper HTTP responses.
-
-**6. Security** - Helmet for headers, rate limiting (100 requests per 15 minutes), bcrypt for passwords, CORS configured."
+"There are 7 events: card created, updated, moved, deleted — and comment created, updated,
+deleted. Every mutation emits the relevant event after the database write succeeds."
 
 ---
 
-## Closing (15 seconds)
+## 3. THREADED COMMENTS — 1:10 to 1:35
 
-"This API is production-ready. It has proper authentication, authorization, validation, error handling, and documentation. The architecture is clean, the code is maintainable, and it's built to scale. Thanks for watching!"
+> Show: `prisma/schema.prisma` — Comment model
 
----
+"Comments use a self-referential relationship in the schema. A comment has an optional `parentId`
+that points back to another comment in the same table. Prisma handles this with a named relation
+called `CommentReplies`.
 
-## Visual Aids to Show (Optional)
+The cascade is set on both directions — delete a card, all its comments go. Delete a parent
+comment, all its replies go automatically at the database level.
 
-1. **Folder structure** - Show the organized module layout
-2. **Prisma schema** - Highlight relationships
-3. **Sample route file** - Show how thin controllers are
-4. **Error handling** - Show custom error classes and global handler
-5. **Postman/API call** - Demonstrate a working endpoint
+The 2-level limit is enforced in the service layer."
 
----
+> Show: `comment.service.ts` — the parentId check block
 
-## Key Talking Points to Emphasize
+"When a reply is created, we fetch the parent comment and check if it already has a `parentId`.
+If it does, it's already a reply — we throw a 403 Forbidden. Simple, clean, no deep recursion
+needed.
 
-- **Separation of concerns** - Each layer has one job
-- **Type safety** - TypeScript strict mode + Zod validation
-- **Security** - JWT, bcrypt, rate limiting, Helmet
-- **Scalability** - Layered architecture, stateless auth
-- **Production-ready** - Error handling, logging, graceful shutdown
-- **Professional standards** - No fat controllers, DRY principle, clean code
+On the read side, we fetch only top-level comments and include their replies in a single query
+using Prisma's `include`. No N+1 problem — one database round trip returns the full threaded
+structure."
 
 ---
 
-## Timing Breakdown
+## 4. CARD REORDERING — 1:35 to 2:05
 
-- Introduction: 15s
-- Architecture: 45s
-- Database: 45s
-- Code Organization: 30s
-- Engineering Decisions: 45s
-- Closing: 15s
+> Show: `src/modules/card/card.repository.ts` — `reorderWithinColumn` and `moveToColumn`
 
-**Total: ~3 minutes**
+"Card positioning uses integers. Every card has a `position` field. Moving a card means shifting
+the other cards to fill the gap or make room.
+
+For within-column moves, say moving Card A from position 0 to position 2 — we shift every card
+between those positions by minus one, then place Card A at position 2. All of this runs inside a
+single Prisma transaction, so it's atomic. No partial updates, no duplicate positions.
+
+For cross-column moves, it's three steps in one transaction: close the gap in the source column,
+open a gap in the target column, then move the card. The card's version is also incremented on
+move so clients can detect the change.
+
+There's also a special case — if a card is moved to a position already occupied by another card
+in the same column, we shift all cards at that position and above to make room. This handles
+dirty state gracefully."
+
+---
+
+## 5. OPTIMISTIC LOCKING — 2:05 to 2:25
+
+> Show: `src/modules/card/card.service.ts` — version check in `updateCard`
+
+"Every card has a `version` field that starts at 1 and increments on every update.
+
+When a frontend client wants to update a card, it can optionally send the version it last read.
+If that version doesn't match what's in the database, it means another user already modified the
+card — we return a 409 Conflict with a clear message: 'Card has been modified by another user.
+Please refresh and try again.'
+
+The client then re-fetches the latest version and retries. This prevents silent data loss when
+two users edit the same card at the same time. If no version is sent, the check is skipped —
+so it's opt-in for clients that support it."
+
+---
+
+## 6. TESTING — 2:25 to 2:45
+
+> Show: `tests/` folder, then run `npx jest --no-coverage --forceExit --runInBand` in terminal
+
+"The test suite covers 46 tests across 5 files — 2 unit test files and 3 integration test files.
+
+Unit tests mock all dependencies and test the service layer in isolation — version conflict
+detection, nesting enforcement, authorization checks, all covered.
+
+Integration tests hit the real Express app with a real database. They test the full flow:
+create board, move card across columns, verify no duplicate positions, create threaded comments,
+cascade delete replies, authorization on every endpoint.
+
+All 46 pass."
+
+---
+
+## CLOSING — 2:45 to 3:00
+
+"Stage 2 took a solid Stage 1 foundation and made it collaborative — real-time events,
+conflict-safe updates, atomic reordering, and threaded discussions. The architecture stayed
+clean throughout. Everything is tested, documented, and production-ready. Thanks."
+
+---
+
+## SCREEN SEQUENCE (what to show and when)
+
+| Time | What to show on screen |
+|------|------------------------|
+| 0:00–0:15 | Project folder structure in editor |
+| 0:15–0:40 | `src/` folder tree, highlight the 4 layers |
+| 0:40–1:10 | `websocket.service.ts` — full file, scroll through it |
+| 1:10–1:35 | `schema.prisma` Comment model, then `comment.service.ts` parentId check |
+| 1:35–2:05 | `card.repository.ts` — `reorderWithinColumn` and `moveToColumn` |
+| 2:05–2:25 | `card.service.ts` — version conflict check block |
+| 2:25–2:45 | Terminal: run `npx jest --no-coverage --forceExit --runInBand`, show all green |
+| 2:45–3:00 | `API_DOCUMENTATION.md` or Postman — show a card move request live |
+
+---
+
+## KEY PHRASES TO HIT
+
+- "HTTP and WebSocket are fully decoupled — services are the bridge"
+- "One Prisma transaction — atomic, no duplicate positions"
+- "409 Conflict — the client re-fetches and retries"
+- "Two-level limit enforced in the service layer, cascade enforced at the database level"
+- "46 tests, all green"

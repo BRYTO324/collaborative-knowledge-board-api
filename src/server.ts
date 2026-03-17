@@ -1,6 +1,7 @@
 import app from './app';
 import { env } from './config/env';
 import { logger } from './utils/logger';
+import { websocketService } from './services/websocket.service';
 import './config/database';
 
 const PORT = env.PORT;
@@ -10,6 +11,10 @@ const server = app.listen(PORT, () => {
   logger.info(`📍 Health check: http://localhost:${PORT}/health`);
   logger.info(`📍 API base: http://localhost:${PORT}/api`);
 });
+
+// Initialize WebSocket
+websocketService.initialize(server);
+logger.info('✅ WebSocket server initialized');
 
 // Graceful shutdown
 const gracefulShutdown = (signal: string) => {

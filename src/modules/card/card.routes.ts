@@ -10,6 +10,7 @@ router.use(authenticate);
 router.post('/', cardController.create);
 router.get('/column/:columnId', cardController.getByColumn);
 router.patch('/:id', cardController.update);
+router.post('/:id/move', cardController.move);
 router.delete('/:id', cardController.delete);
 router.post('/:id/tags', cardController.assignTags);
 

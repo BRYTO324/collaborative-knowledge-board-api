@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { CardService } from './card.service';
-import { createCardSchema, updateCardSchema, assignTagsSchema } from './card.validator';
+import { createCardSchema, updateCardSchema, assignTagsSchema, moveCardSchema } from './card.validator';
 import { sendSuccess } from '../../utils/response';
 import { AuthRequest } from '../../middleware/auth.middleware';
 
@@ -14,10 +14,7 @@ export class CardController {
   create = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const input = createCardSchema.parse(req.body);
-      const card = await this.cardService.createCard(req.userId!, {
-        ...input,
-        dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
-      });
+      const card = await this.cardService.createCard(req.userId!, input);
       sendSuccess(res, card, 'Card created successfully', 201);
     } catch (error) {
       next(error);
@@ -26,8 +23,10 @@ export class CardController {
 
   getByColumn = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const cards = await this.cardService.getCardsByColumn(req.params.columnId, req.userId!);
-      sendSuccess(res, cards, 'Cards retrieved successfully');
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const result = await this.cardService.getCardsByColumn(req.params.columnId, req.userId!, page, limit);
+      sendSuccess(res, result, 'Cards retrieved successfully');
     } catch (error) {
       next(error);
     }
@@ -36,14 +35,7 @@ export class CardController {
   update = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const input = updateCardSchema.parse(req.body);
-      const card = await this.cardService.updateCard(req.params.id, req.userId!, {
-        ...input,
-        dueDate: input.dueDate !== undefined 
-          ? input.dueDate === null 
-            ? null 
-            : new Date(input.dueDate)
-          : undefined,
-      });
+      const card = await this.cardService.updateCard(req.params.id, req.userId!, input);
       sendSuccess(res, card, 'Card updated successfully');
     } catch (error) {
       next(error);
@@ -64,6 +56,16 @@ export class CardController {
       const input = assignTagsSchema.parse(req.body);
       const card = await this.cardService.assignTags(req.params.id, req.userId!, input);
       sendSuccess(res, card, 'Tags assigned successfully');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  move = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const input = moveCardSchema.parse(req.body);
+      const card = await this.cardService.moveCard(req.params.id, req.userId!, input);
+      sendSuccess(res, card, 'Card moved successfully');
     } catch (error) {
       next(error);
     }

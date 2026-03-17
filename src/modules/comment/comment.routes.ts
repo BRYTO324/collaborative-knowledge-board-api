@@ -9,5 +9,7 @@ router.use(authenticate);
 
 router.post('/', commentController.create);
 router.get('/card/:cardId', commentController.getByCard);
+router.patch('/:id', commentController.update);
+router.delete('/:id', commentController.delete);
 
 export default router;

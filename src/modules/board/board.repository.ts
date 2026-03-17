@@ -23,15 +23,23 @@ export class BoardRepository {
     });
   }
 
-  async findByUserId(userId: string): Promise<Board[]> {
+  async findByUserId(userId: string, skip = 0, take = 20): Promise<Board[]> {
     return prisma.board.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      skip,
+      take,
       include: {
         columns: {
           orderBy: { position: 'asc' },
         },
       },
+    });
+  }
+
+  async countByUserId(userId: string): Promise<number> {
+    return prisma.board.count({
+      where: { userId },
     });
   }
 

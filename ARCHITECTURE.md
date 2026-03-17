@@ -1,382 +1,454 @@
-# System Architecture Documentation
+# System Architecture
 
 ## Overview
 
-The Collaborative Knowledge Board API is built using a **layered architecture pattern** that emphasizes separation of concerns, testability, and maintainability.
+The Collaborative Knowledge Board API is built on a strict 4-layer architecture that enforces separation of concerns, enables independent testing of each layer, and makes the codebase easy to extend without breaking existing functionality.
+
+The system was developed in two stages. Stage 1 established the core layered structure with authentication, CRUD operations, and production infrastructure. Stage 2 extended that foundation with real-time WebSocket collaboration, optimistic locking, atomic card reordering, threaded comments, and performance optimizations — all without restructuring the existing architecture.
+
+---
 
 ## Architecture Layers
 
-### 1. Routes Layer
-**Responsibility:** HTTP endpoint definitions
-
-**Location:** `src/modules/*/*.routes.ts`
-
-**Purpose:**
-- Define HTTP methods and paths
-- Apply middleware (authentication, validation)
-- Map endpoints to controller methods
-
-**Example:**
-```typescript
-router.post('/', authenticate, boardController.create);
-router.get('/', authenticate, boardController.getAll);
+```
+┌──────────────────────────────────────────────────────────┐
+│                    Client Layer                           │
+│              (HTTP Requests + WebSocket)                  │
+└────────────────────────┬─────────────────────────────────┘
+                         │
+┌────────────────────────▼─────────────────────────────────┐
+│                   Routes Layer                            │
+│   src/modules/{domain}/{domain}.routes.ts                 │
+│   — Endpoint definitions                                  │
+│   — Middleware application (authenticate, validate)       │
+└────────────────────────┬─────────────────────────────────┘
+                         │
+┌────────────────────────▼─────────────────────────────────┐
+│                 Controllers Layer                         │
+│   src/modules/{domain}/{domain}.controller.ts             │
+│   — Parse and validate request input (Zod)                │
+│   — Call service methods                                  │
+│   — Format and send responses                             │
+└────────────────────────┬─────────────────────────────────┘
+                         │
+┌────────────────────────▼─────────────────────────────────┐
+│                  Services Layer                           │
+│   src/modules/{domain}/{domain}.service.ts                │
+│   — Business logic and rules                              │
+│   — Authorization and ownership checks                    │
+│   — WebSocket event emission                              │
+│   — Coordination between repositories                     │
+└────────────────────────┬─────────────────────────────────┘
+                         │
+┌────────────────────────▼─────────────────────────────────┐
+│                Repositories Layer                         │
+│   src/modules/{domain}/{domain}.repository.ts             │
+│   — Prisma database queries                               │
+│   — Transaction management                               │
+│   — Query optimization (includes, ordering, pagination)   │
+└────────────────────────┬─────────────────────────────────┘
+                         │
+┌────────────────────────▼─────────────────────────────────┐
+│                  PostgreSQL Database                      │
+└──────────────────────────────────────────────────────────┘
 ```
 
-### 2. Controller Layer
-**Responsibility:** Request/response handling
+### Layer Responsibilities
 
-**Location:** `src/modules/*/*.controller.ts`
+**Routes Layer** — Defines HTTP methods and paths, applies middleware (authentication, rate limiting), and maps endpoints to controller methods. No logic lives here.
 
-**Purpose:**
-- Parse and validate request data using Zod
-- Call service layer methods
-- Format responses using standardized response utilities
-- Handle HTTP-specific concerns (status codes, headers)
+**Controllers Layer** — Parses request data, runs Zod schema validation, calls the appropriate service method, and returns a standardized response. Controllers are intentionally thin — no business logic.
 
-**Key Principle:** Controllers should be thin. No business logic here.
+**Services Layer** — The core of the application. Implements business rules, verifies resource ownership, coordinates between multiple repositories, and emits WebSocket events after successful mutations.
 
-**Example:**
-```typescript
-create = async (req: AuthRequest, res: Response, next: NextFunction) => {
-  try {
-    const input = createBoardSchema.parse(req.body);
-    const board = await this.boardService.createBoard(req.userId!, input);
-    sendSuccess(res, board, 'Board created successfully', 201);
-  } catch (error) {
-    next(error);
-  }
-};
+**Repositories Layer** — Handles all database interaction via Prisma. Responsible for query construction, eager loading of relations, pagination, and transaction management. No business logic.
+
+---
+
+## Module Structure
+
+Every domain module follows the same file structure:
+
+```
+src/modules/{domain}/
+├── {domain}.routes.ts       # Route definitions
+├── {domain}.controller.ts   # HTTP handling
+├── {domain}.service.ts      # Business logic
+├── {domain}.repository.ts   # Data access
+└── {domain}.validator.ts    # Zod schemas
 ```
 
-### 3. Service Layer
-**Responsibility:** Business logic and orchestration
+Modules: `auth`, `board`, `column`, `card`, `comment`, `tag`
 
-**Location:** `src/modules/*/*.service.ts`
-
-**Purpose:**
-- Implement business rules
-- Coordinate between multiple repositories
-- Handle authorization checks
-- Transform data for business needs
-- Throw domain-specific errors
-
-**Example:**
-```typescript
-async createBoard(userId: string, input: CreateBoardInput) {
-  // Business logic: user can create board
-  return this.boardRepository.create(userId, input.title, input.description);
-}
-
-async deleteBoard(boardId: string, userId: string) {
-  const board = await this.boardRepository.findById(boardId);
-  
-  if (!board) {
-    throw new NotFoundError('Board not found');
-  }
-  
-  // Authorization: only owner can delete
-  if (board.userId !== userId) {
-    throw new ForbiddenError('Access denied');
-  }
-  
-  await this.boardRepository.delete(boardId);
-}
-```
-
-### 4. Repository Layer
-**Responsibility:** Database operations
-
-**Location:** `src/modules/*/*.repository.ts`
-
-**Purpose:**
-- Execute database queries using Prisma
-- Abstract database implementation details
-- Provide clean data access interface
-- Handle query optimization (includes, ordering)
-
-**Example:**
-```typescript
-async findByUserId(userId: string): Promise<Board[]> {
-  return prisma.board.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    include: {
-      columns: {
-        orderBy: { position: 'asc' },
-      },
-    },
-  });
-}
-```
+---
 
 ## Request Lifecycle
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Client Request                         │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    Express Router                           │
-│                  (Route Definition)                         │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│              Authentication Middleware                      │
-│           (Verify JWT, Extract User ID)                     │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                     Controller                              │
-│         • Parse request body                                │
-│         • Validate with Zod schema                          │
-│         • Call service method                               │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                      Service                                │
-│         • Execute business logic                            │
-│         • Check authorization                               │
-│         • Call repository methods                           │
-│         • Throw domain errors if needed                     │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    Repository                               │
-│         • Build Prisma query                                │
-│         • Execute database operation                        │
-│         • Return data                                       │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                  PostgreSQL Database                        │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│              Response (Success or Error)                    │
-│         • Standardized JSON format                          │
-│         • Appropriate HTTP status code                      │
-└─────────────────────────────────────────────────────────────┘
+Incoming HTTP Request
+        │
+        ▼
+Express Router (routes.ts)
+        │
+        ▼
+authenticate middleware  ← Verifies JWT, attaches userId to request
+        │
+        ▼
+Controller (controller.ts)
+  ├── Parse request body / params / query
+  ├── Validate with Zod schema
+  └── Call service method
+        │
+        ▼
+Service (service.ts)
+  ├── Fetch resource from repository
+  ├── Verify ownership (resource.userId === req.userId)
+  ├── Apply business rules
+  ├── Call repository to persist changes
+  └── Emit WebSocket event (on mutations)
+        │
+        ▼
+Repository (repository.ts)
+  ├── Build Prisma query
+  ├── Execute with includes / transactions
+  └── Return result
+        │
+        ▼
+PostgreSQL
+        │
+        ▼
+Response (standardized JSON)
 ```
 
-## Error Handling Flow
+---
 
-```
-Error Thrown (anywhere in the stack)
-    ↓
-Express Error Middleware
-    ↓
-Is it a ZodError? → Format validation errors
-    ↓
-Is it an AppError? → Use error's status code and message
-    ↓
-Unknown error? → Return 500 Internal Server Error
-    ↓
-Send standardized error response
-```
+## Design Patterns
 
-## Module Structure
+### Repository Pattern
 
-Each domain module follows this structure:
+Abstracts all database access behind a clean interface. Services never import Prisma directly — they call repository methods. This makes services fully testable with mocked repositories.
 
-```
-src/modules/[domain]/
-├── [domain].controller.ts    # HTTP layer
-├── [domain].service.ts        # Business logic
-├── [domain].repository.ts     # Data access
-├── [domain].validator.ts      # Zod schemas
-└── [domain].routes.ts         # Route definitions
+```typescript
+class CardRepository {
+  async findById(id: string) {
+    return prisma.card.findUnique({ where: { id }, include: { tags: true } });
+  }
+}
+
+class CardService {
+  constructor(private cardRepository: CardRepository) {}
+
+  async getCard(id: string) {
+    return this.cardRepository.findById(id);
+  }
+}
 ```
 
-**Benefits:**
-- **Cohesion:** Related code stays together
-- **Discoverability:** Easy to find all code for a feature
-- **Scalability:** Add new modules without affecting existing ones
-- **Testability:** Each layer can be tested independently
+### Middleware Pattern
 
-## Cross-Cutting Concerns
+Cross-cutting concerns (authentication, error handling, 404 handling) are implemented as Express middleware and applied globally or at the route level.
 
-### Authentication
-- Implemented as Express middleware
-- Validates JWT tokens
-- Extracts user ID and attaches to request
-- Applied at route level
+```typescript
+// Applied per route
+router.patch('/:id', authenticate, cardController.update);
 
-### Validation
-- Zod schemas defined in validator files
-- Validation happens in controllers
-- Type-safe input/output
-- Clear error messages
-
-### Error Handling
-- Custom error classes extend base Error
-- Global error handler middleware
-- Consistent error response format
-- Development vs production error details
-
-### Logging
-- Centralized logger utility
-- Structured log format with timestamps
-- Different log levels (info, warn, error, debug)
-- Environment-aware (verbose in dev, minimal in prod)
-
-## Data Flow Patterns
-
-### Create Operation
+// Applied globally
+app.use(errorHandler);
 ```
+
+### Observer Pattern (WebSocket)
+
+Services emit events after successful mutations. The WebSocket service broadcasts those events to all clients in the relevant board room. Producers and consumers are fully decoupled.
+
+```typescript
+// In CardService
+const card = await this.cardRepository.create(...);
+websocketService.emitToBoardMembers(boardId, WS_EVENTS.CARD_CREATED, { card, boardId });
+```
+
+---
+
+## Stage 1: Foundation Architecture
+
+### Authentication Flow
+
+```
+POST /api/auth/register
+  → Validate input (Zod)
+  → Hash password (bcrypt, 10 rounds)
+  → Store user in database
+  → Return JWT
+
+POST /api/auth/login
+  → Validate input
+  → Fetch user by email
+  → Compare password (bcrypt.compare)
+  → Return JWT
+
+Protected Request
+  → Extract Bearer token from Authorization header
+  → Verify JWT signature and expiration
+  → Attach userId to request object
+  → Continue to controller
+```
+
+### Resource Ownership Model
+
+```
+User
+ └── Board (1:N)
+      └── Column (1:N)
+           └── Card (1:N)
+                ├── Comment (1:N)
+                └── Tag (N:M via CardTag)
+```
+
+Authorization is always checked at the board level. A user owns a board; all nested resources (columns, cards, comments) inherit that ownership. Checks happen in the service layer, not the controller.
+
+### Error Handling Architecture
+
+```
+Error thrown anywhere in the stack
+        │
+        ▼
+next(error) passed to Express error middleware
+        │
+        ├── ZodError → 422 Unprocessable Entity with field-level details
+        ├── AppError → Use error's statusCode and message
+        └── Unknown  → 500 Internal Server Error
+```
+
+Custom error classes:
+- `AppError` — Base class with `statusCode`
+- `NotFoundError` — 404
+- `ForbiddenError` — 403
+- `UnauthorizedError` — 401
+- `ConflictError` — 409
+
+---
+
+## Stage 2: Collaboration Architecture
+
+### Real-Time WebSocket Architecture
+
+```
+HTTP Layer (REST)
+  — Handles CRUD operations
+  — Returns immediate HTTP response
+  — Emits WebSocket event after mutation
+        │
+        ▼
+WebSocket Service (src/services/websocket.service.ts)
+  — Manages Socket.io server
+  — Authenticates connections via JWT
+  — Maintains board rooms and user socket maps
+  — Broadcasts events to board rooms
+        │
+        ▼
+Connected Clients
+  — Receive real-time updates
+  — Update UI without polling
+```
+
+**Key decisions:**
+- Socket.io chosen for automatic reconnection, room support, and fallback mechanisms
+- JWT authentication on WebSocket handshake (same token as HTTP)
+- One room per board (`board:{boardId}`) — events are isolated per board
+- WebSocket service has no business logic — it only broadcasts
+- Events emitted from the service layer, after the database write succeeds
+
+#### WebSocket Event Flow
+
+```
+User A creates a card
+        │
+        ▼
 Controller validates input
-    ↓
-Service checks business rules
-    ↓
-Repository creates record
-    ↓
-Return created entity
+        │
+        ▼
+CardService creates card in database
+        │
+        ├── Returns card to User A via HTTP response
+        │
+        └── Calls websocketService.emitToBoardMembers(boardId, 'card:created', { card })
+                │
+                ▼
+        Socket.io broadcasts to board:{boardId} room
+                │
+                ├── User B receives card:created event
+                ├── User C receives card:created event
+                └── User D receives card:created event
 ```
 
-### Read Operation
+### Optimistic Locking
+
+Version-based conflict detection prevents lost updates when multiple users edit the same card concurrently.
+
 ```
-Controller extracts parameters
-    ↓
-Service verifies access rights
-    ↓
-Repository fetches data
-    ↓
-Return data
+Time    User A                    User B
+────────────────────────────────────────────
+T1      Read card (version: 1)    Read card (version: 1)
+T2      Edit title                Edit description
+T3      PATCH /cards/:id          
+        { title: "X", version: 1 }
+        → Success, version now 2
+T4                                PATCH /cards/:id
+                                  { description: "Y", version: 1 }
+                                  → 409 Conflict
+T5                                Re-fetch card (version: 2)
+T6                                PATCH /cards/:id
+                                  { description: "Y", version: 2 }
+                                  → Success, version now 3
 ```
 
-### Update Operation
-```
-Controller validates input
-    ↓
-Service fetches existing record
-    ↓
-Service checks ownership
-    ↓
-Repository updates record
-    ↓
-Return updated entity
+Implementation:
+```typescript
+if (input.version !== undefined && card.version !== input.version) {
+  throw new ConflictError('Card has been modified by another user. Please refresh and try again.');
+}
+// Update and increment version atomically
+await this.cardRepository.update(cardId, { ...input, version: { increment: 1 } });
 ```
 
-### Delete Operation
+### Card Reordering Architecture
+
+Integer-based positions with automatic adjustment, wrapped in a database transaction.
+
+**Within same column — move card from position 0 to position 2:**
 ```
-Controller extracts ID
-    ↓
-Service fetches existing record
-    ↓
-Service checks ownership
-    ↓
-Repository deletes record
-    ↓
-Return success
+Before: [Card A(0), Card B(1), Card C(2), Card D(3)]
+Move Card A to position 2:
+  1. Shift cards at positions 1–2 down by 1
+  2. Place Card A at position 2
+After:  [Card B(0), Card C(1), Card A(2), Card D(3)]
 ```
+
+**Across columns:**
+```
+Column A: [Card1(0), Card2(1), Card3(2)]
+Column B: [Card4(0), Card5(1)]
+
+Move Card2 from Column A to Column B at position 1:
+  1. Shift Column A: fill gap left by Card2
+     → [Card1(0), Card3(1)]
+  2. Shift Column B: make space at position 1
+     → [Card4(0), Card5(2)]
+  3. Move Card2 to Column B position 1
+     → [Card4(0), Card2(1), Card5(2)]
+```
+
+All three steps execute inside a single Prisma transaction — atomic, consistent, and safe under concurrent load.
+
+### Threaded Comment Architecture
+
+Two-level nesting using a self-referential database relationship.
+
+```
+Comment (parentId: null)
+ ├── Reply (parentId: comment.id)
+ ├── Reply (parentId: comment.id)
+ └── Reply (parentId: comment.id)
+```
+
+Database design:
+```prisma
+model Comment {
+  parentId String?
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentReplies")
+  @@index([parentId])
+}
+```
+
+Query strategy — fetch top-level comments with replies in a single query:
+```typescript
+prisma.comment.findMany({
+  where: { cardId, parentId: null },
+  include: {
+    replies: { include: { user: true }, orderBy: { createdAt: 'asc' } },
+    user: true
+  },
+  orderBy: { createdAt: 'desc' }
+});
+```
+
+The 2-level limit is enforced at the service layer: if a `parentId` is provided, the service verifies the parent has no `parentId` of its own before allowing the reply.
+
+---
 
 ## Security Architecture
 
-### Authentication Flow
 ```
-User registers → Password hashed with bcrypt → Stored in database
-User logs in → Password compared → JWT issued
-Protected request → JWT verified → User ID extracted → Request processed
-```
-
-### Authorization Pattern
-```
-Request arrives with JWT
-    ↓
-Middleware verifies token and extracts userId
-    ↓
-Service fetches resource
-    ↓
-Service checks if resource.userId === requestUserId
-    ↓
-If yes: proceed
-If no: throw ForbiddenError
+Layer 1: Network       — Rate limiting (100 req/15 min), CORS
+Layer 2: Transport     — Helmet security headers
+Layer 3: Authentication — JWT verification on every protected request
+Layer 4: Authorization  — Ownership checks in service layer
+Layer 5: Validation    — Zod schema validation on all inputs
+Layer 6: Database      — Prisma parameterized queries (SQL injection prevention)
 ```
 
-## Database Architecture
+---
 
-### Connection Management
-- Single Prisma Client instance
-- Connection pooling handled by Prisma
-- Graceful disconnect on shutdown
+## Performance Architecture
 
-### Query Optimization
-- Indexes on foreign keys
-- Indexes on frequently queried fields
-- Strategic use of `include` for related data
-- Ordering at database level
+### Database Indexing
 
-### Transaction Handling
-- Prisma handles transactions automatically
-- Cascade deletes configured in schema
-- Referential integrity enforced
+| Index | Query Pattern |
+|-------|--------------|
+| `users.email` | Authentication lookup |
+| `boards.userId` | List user's boards |
+| `columns.boardId` | List board's columns |
+| `cards.columnId` | List column's cards |
+| `cards.(columnId, position)` | Ordered card queries |
+| `comments.cardId` | List card's comments |
+| `comments.parentId` | Fetch comment replies |
+| `tags.name` | Tag lookup by name |
+
+### N+1 Query Prevention
+
+All repositories use Prisma `include` to fetch related data in a single query. No loops with individual database calls exist anywhere in the codebase.
+
+### Pagination
+
+High-volume endpoints return paginated results with metadata:
+```json
+{
+  "data": {
+    "items": [...],
+    "pagination": { "page": 1, "limit": 20, "total": 150, "totalPages": 8 }
+  }
+}
+```
+
+---
 
 ## Scalability Considerations
 
-### Horizontal Scaling
-- Stateless authentication (JWT)
-- No server-side sessions
-- Database connection pooling
-- Can run multiple instances behind load balancer
+The current architecture is production-ready for a single-server deployment. The following paths exist for scaling:
 
-### Performance
-- Database indexes for fast queries
-- Minimal data transfer (select only needed fields)
-- Efficient relationship loading
-- Rate limiting to prevent abuse
+**Horizontal scaling** — JWT is stateless, so multiple server instances can run behind a load balancer. The only constraint is WebSocket state (user-socket map is in-memory). Adding Redis pub/sub would enable multi-server WebSocket broadcasting.
 
-### Maintainability
-- Clear separation of concerns
-- Consistent patterns across modules
-- Type safety throughout
-- Self-documenting code structure
+**Database scaling** — Read replicas can be added for query-heavy workloads. Prisma supports connection pooling configuration.
 
-## Design Principles Applied
+**Caching** — Tag lists and board metadata are good candidates for Redis caching, as they change infrequently but are read often.
 
-1. **Single Responsibility Principle**
-   - Each layer has one job
-   - Each class has one reason to change
+---
 
-2. **Dependency Inversion**
-   - High-level modules don't depend on low-level modules
-   - Both depend on abstractions (interfaces)
-
-3. **Open/Closed Principle**
-   - Open for extension (add new modules)
-   - Closed for modification (existing code unchanged)
-
-4. **DRY (Don't Repeat Yourself)**
-   - Shared utilities for common operations
-   - Reusable error classes
-   - Consistent response formatting
-
-5. **KISS (Keep It Simple, Stupid)**
-   - No over-engineering
-   - Clear, readable code
-   - Straightforward patterns
-
-## Technology Choices
+## Technology Decisions
 
 | Technology | Reason |
-|------------|--------|
-| TypeScript | Type safety, better tooling, catches errors early |
-| Express | Mature, flexible, large ecosystem |
-| Prisma | Type-safe queries, excellent DX, migration management |
-| PostgreSQL | Relational data, ACID compliance, performance |
-| Zod | Runtime validation, type inference, composable |
-| JWT | Stateless, scalable, standard |
+|-----------|--------|
+| TypeScript | Type safety, compile-time error detection, better tooling |
+| Express.js | Mature, minimal, large ecosystem |
+| Prisma ORM | Type-safe queries, migration management, N+1 prevention |
+| PostgreSQL | ACID compliance, relational integrity, strong indexing |
+| Zod | Runtime validation with TypeScript type inference |
+| JWT | Stateless, scalable, no server-side session storage |
+| Socket.io | Automatic reconnection, room support, fallback mechanisms |
 | bcrypt | Industry standard for password hashing |
 
-## Future Enhancements
+---
 
-Potential improvements while maintaining architecture:
-
-1. **Caching Layer** - Add Redis for frequently accessed data
-2. **Event System** - Emit events for audit logging
-3. **Background Jobs** - Queue system for async tasks
-4. **API Versioning** - Support multiple API versions
-5. **GraphQL** - Alternative to REST while keeping service layer
-6. **Microservices** - Split modules into separate services
-7. **Testing** - Unit tests for each layer, integration tests
-
-All enhancements can be added without breaking the layered architecture.
+For API details, see [API Reference](./docs/API_REFERENCE.md).
+For setup instructions, see [Development Guide](./docs/DEVELOPMENT_GUIDE.md).
+For technical specifications, see [Technical Documentation](./docs/TECHNICAL_DOCUMENTATION.md).

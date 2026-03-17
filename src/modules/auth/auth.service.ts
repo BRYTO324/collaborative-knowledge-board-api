@@ -65,10 +65,13 @@ export class AuthService {
   }
 
   private generateToken(userId: string): string {
-    return jwt.sign({ userId }, env.JWT_SECRET, {
-      expiresIn: env.JWT_EXPIRES_IN,
-    });
+    return jwt.sign(
+      { userId }, 
+      env.JWT_SECRET, 
+      { expiresIn: env.JWT_EXPIRES_IN as any }
+    );
   }
+
 
   async verifyToken(token: string): Promise<string> {
     try {

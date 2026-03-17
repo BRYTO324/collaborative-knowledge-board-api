@@ -13,8 +13,22 @@ export class BoardService {
     return this.boardRepository.create(userId, input.title, input.description);
   }
 
-  async getUserBoards(userId: string) {
-    return this.boardRepository.findByUserId(userId);
+  async getUserBoards(userId: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [boards, total] = await Promise.all([
+      this.boardRepository.findByUserId(userId, skip, limit),
+      this.boardRepository.countByUserId(userId),
+    ]);
+
+    return {
+      boards,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async getBoardById(boardId: string, userId: string) {

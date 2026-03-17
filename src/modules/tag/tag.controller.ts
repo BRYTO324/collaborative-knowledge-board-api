@@ -21,7 +21,7 @@ export class TagController {
     }
   };
 
-  getAll = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  getAll = async (_req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const tags = await this.tagService.getAllTags();
       sendSuccess(res, tags, 'Tags retrieved successfully');
